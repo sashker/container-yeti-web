@@ -33,7 +33,8 @@ apt-get install -yqq \
     ruby2.3-dev \
 	ca-certificates \
 	ruby2.3 \
-	iputils-ping\
+	iputils-ping \
+        curl \
 	git
 
 log::m-info "Clone $BUILD branch of $APP Release ..."

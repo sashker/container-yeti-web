@@ -36,6 +36,9 @@ WORKDIR $HOME
 # Expose a volume so that nginx will be able to read in assets in production.
 VOLUME ["$HOME"]
 
+HEALTHCHECK --interval=5m --timeout=3s \
+  CMD curl -f http://$YETIWEB_ADDRESS:$YETIWEB_LISTEN/ || exit 1
+
 SHELL ["/bin/bash", "-lc"]
 
 COPY entrypoint /
