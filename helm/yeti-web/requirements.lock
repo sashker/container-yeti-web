@@ -1,0 +1,6 @@
+dependencies:
+- name: yeti-cron
+  repository: file://../../../yeti-cron/helm/yeti-cron
+  version: 1.0.0
+digest: sha256:9579ffe1a1067bfdc50a758f21958f6d530ff42ed7a6945f928ce1c054f28b3e
+generated: 2018-01-11T08:44:26.773592+05:00

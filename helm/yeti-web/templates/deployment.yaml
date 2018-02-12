@@ -1,0 +1,312 @@
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "yeti-web.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: yeti-web
+{{ include "web_labels" . | indent 8}}
+      annotations:
+        checksum/config-map: {{ include (print $.Chart.Name "/templates/config.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      {{- if .Values.rbacCreate }}
+      serviceAccountName: {{ template "yeti-web.fullname" . }}-{{ .Values.rbacServiceAccount }}
+      {{ end }}
+      initContainers:
+      - name: {{ .Chart.Name }}-config
+        image: telephoneorg/tmpld
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+        - tmpld /templates/*.j2
+        env:
+        - name: KUBE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: templates
+          mountPath: /templates
+        - name: config
+          mountPath: /config
+        - name: init
+          mountPath: /yeti-init.d
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: ROLE
+          value: yeti
+        - name: YETIWEB_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.workers
+        - name: YETIWEB_LISTEN
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.listen
+        - name: ROUTING_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.db_name
+        - name: ROUTING_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_host
+        - name: ROUTING_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_port
+        - name: CDR_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.db_name
+        - name: CDR_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_host
+        - name: CDR_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_port
+        - name: ROUTING_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_user
+        - name: ROUTING_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_password
+        - name: CDR_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_user
+        - name: CDR_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_password
+        - name: PGPASSFILE
+          value: /config/.pgpass
+        ports:
+        - name: data
+          containerPort: {{ .Values.configYetiListen }}
+        volumeMounts:
+        - name: yeti-web-data
+          mountPath: /data
+      - name: yeti-nginx
+        image: sashker/docker-yeti-nginx:latest
+        ports:
+        - name: data
+          containerPort: {{ .Values.service.servicePort }}
+        - name: api
+          containerPort: {{ .Values.service.apiPort }}
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/
+        - name: yeti-web-data
+          mountPath: /home/yeti-web
+      volumes:
+      - name: yeti-web-data
+        emptyDir: {}
+      - name: templates
+        configMap:
+          name: {{ template "yeti-web.fullname" . }}-templates
+      - name: nginx-config
+        configMap:
+          name: {{ template "yeti-web.fullname" . }}-nginx
+      - name: config
+        emptyDir: {}
+      - name: init
+        emptyDir: {}
+
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "yeti-web.fullname" . }}-cdrbilling
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: yeti-web-cdrbilling
+{{ include "web_labels" . | indent 8}}
+      annotations:
+        checksum/config-map: {{ include (print $.Chart.Name "/templates/config.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      {{- if .Values.rbacCreate }}
+      serviceAccountName: {{ template "yeti-web.fullname" . }}-{{ .Values.rbacServiceAccount }}
+      {{ end }}
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: ROLE
+          value: cdr_billing
+        - name: YETIWEB_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.workers
+        - name: YETIWEB_LISTEN
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.listen
+        - name: ROUTING_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.db_name
+        - name: ROUTING_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_host
+        - name: ROUTING_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_port
+        - name: CDR_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.db_name
+        - name: CDR_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_host
+        - name: CDR_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_port
+        - name: ROUTING_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_user
+        - name: ROUTING_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_password
+        - name: CDR_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_user
+        - name: CDR_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_password
+
+---
+
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: {{ template "yeti-web.fullname" . }}-delayedjob
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    metadata:
+      labels:
+        app: yeti-web-delayedjob
+{{ include "web_labels" . | indent 8}}
+      annotations:
+        checksum/config-map: {{ include (print $.Chart.Name "/templates/config.yaml") . | sha256sum }}
+    spec:
+      terminationGracePeriodSeconds: 30
+      {{- if .Values.rbacCreate }}
+      serviceAccountName: {{ template "yeti-web.fullname" . }}-{{ .Values.rbacServiceAccount }}
+      {{ end }}
+      containers:
+      - name: {{ .Chart.Name }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: ROLE
+          value: delayed_job
+        - name: YETIWEB_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.workers
+        - name: YETIWEB_LISTEN
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: yetiweb.listen
+        - name: ROUTING_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.db_name
+        - name: ROUTING_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_host
+        - name: ROUTING_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: routing.postgres_port
+        - name: CDR_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.db_name
+        - name: CDR_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_host
+        - name: CDR_POSTGRES_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-config
+              key: cdr.postgres_port
+        - name: ROUTING_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_user
+        - name: ROUTING_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: routing.postgres_password
+        - name: CDR_POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_user
+        - name: CDR_POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ template "yeti-web.fullname" . }}-secret
+              key: cdr.postgres_password
