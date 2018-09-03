@@ -1,4 +1,4 @@
-FROM telephoneorg/debian:jessie
+FROM telephoneorg/debian:stretch
 
 LABEL maintainer="Alexander Mustafin <mustafin.aleksandr@gmail.com>"
 
